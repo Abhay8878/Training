@@ -1,0 +1,81 @@
+# 🎓 NestJS Transaction Mastery: Day 1 Summary
+
+This document serves as your ultimate revision guide for everything we built and learned today regarding **Manual Database Transactions** using NestJS and TypeORM.
+
+---
+
+## 🚀 1. The Core Foundation: QueryRunner
+We used the `QueryRunner` approach because it provides **explicit control**. Unlike a standard Repository, a `QueryRunner` gives you a dedicated "pipeline" to the database that stays open until you decide to close it.
+
+### The 6-Step Manual Flow:
+1.  **Create**: `const queryRunner = this.dataSource.createQueryRunner();`
+2.  **Connect**: `await queryRunner.connect();` (Establish physical link).
+3.  **Start**: `await queryRunner.startTransaction('SERIALIZABLE');` (The "Staging" phase).
+4.  **Work**: Execute DB operations using `queryRunner.manager`.
+5.  **Finalize**: 
+    -   `await queryRunner.commitTransaction();` (Save permanently).
+    -   `await queryRunner.rollbackTransaction();` (Undo on error).
+6.  **Cleanup**: `await queryRunner.release();` (Crucial to prevent memory/connection leaks).
+
+---
+
+## 🛡️ 2. Isolation Levels (Database Safety)
+We upgraded the transaction to **`SERIALIZABLE`**.
+*   **What it is:** The highest level of safety.
+*   **Why use it:** It guarantees that even if 1,000 users hit the same row at once, the database handles them as if they arrived one-by-one. It prevents "Race Conditions" where two people might buy the same final item in stock.
+
+---
+
+## 🏗️ 3. Production-Ready Validation (DTOs)
+We stopped using loose TypeScript types and moved to **Class DTOs** with `class-validator`.
+
+### Why this matters:
+*   It protects your database. If a user sends a fake email or a name that's too short, **NestJS rejects the request before the transaction even starts**.
+*   **Key Decorators used:** `@IsEmail()`, `@IsNotEmpty()`, `@MinLength()`, `@IsOptional()`.
+
+---
+
+## 📍 4. Savepoints (Partial Success)
+This was our "Expert Level" implementation. We learned that not every error should kill the whole process.
+
+### Scenario:
+*   **Core Data (User + Profile)**: MUST succeed.
+*   **Optional Data (Preferences)**: Should try to save, but if it fails, don't delete the User!
+
+### The Command:
+```typescript
+await queryRunner.query('SAVEPOINT checkpoint_name'); // Create mark
+// ... try some work ...
+await queryRunner.query('ROLLBACK TO SAVEPOINT checkpoint_name'); // Undo ONLY that work
+```
+
+---
+
+## ✍️ 5. Raw SQL within Transactions
+Sometimes TypeORM isn't enough. We learned how to use `queryRunner.query()` to talk directly to PostgreSQL while still staying inside our transaction's safety bubble.
+
+**Safety Tip:** Always use placeholders (`$1`, `$2`) to prevent **SQL Injection**!
+
+---
+
+## 🛑 6. Troubleshooting Common Errors
+Today we solved two major pain points:
+
+### A. The Decorator Signature Error:
+*   **Cause:** TypeScript 5+ defaults to "Standard" decorators, but TypeORM uses "Legacy" ones.
+*   **Fix:** In [tsconfig.json](file:///d:/Training/tsconfig.json), set `"useDefineForClassFields": false`.
+
+### B. Foreign Key Violations during Sync:
+*   **Cause:** Changing table names (e.g., `user` -> `users`) when there is existing "orphaned" data.
+*   **Fix:** Renaming the dependent tables (e.g., `profile` -> `profiles`) or manually clearing the database to let `synchronize: true` start fresh.
+
+---
+
+## 💡 Pro-Tips for Revision:
+1.  **Atomicity**: Remember, Transactions are about the **"All or Nothing"** principle.
+2.  **Order Matters**: Always save the Parent ([User](file:///d:/Training/src/users/entities/user.entity.ts#4-15)) before the Child ([Profile](file:///d:/Training/src/users/entities/profile.entity.ts#4-19)) if the Child holds the Foreign Key.
+3.  **Post-Commit Logic**: Never send a "Welcome" email *inside* the transaction. Wait until `commitTransaction()` returns success!
+
+---
+
+**See you tomorrow for Day 2: Multi-part Uploads!** ✌️
